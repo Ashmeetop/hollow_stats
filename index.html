@@ -1,15 +1,181 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover"/>
-  <title>Hollow · Dashboard</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Hollow Dashboard</title>
 
-  <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#000;
+  --card:#1c1c1e;
+  --line:#2c2c2e;
+  --text:#fff;
+  --sub:#98989f;
+  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
+}
 
-  <script type="module">
-    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
-    import { getDatabase, ref, onValue, set, get, child } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
+*{
+  margin:0;
+  padding:0;
+  box-sizing:border-box;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  max-width:430px;
+  margin:auto;
+  padding:20px;
+}
+
+.title{
+  font-size:32px;
+  font-weight:700;
+  margin-bottom:20px;
+}
+
+.card{
+  background:var(--card);
+  border-radius:24px;
+  padding:20px;
+  margin-bottom:16px;
+}
+
+.label{
+  color:var(--sub);
+  font-size:14px;
+  margin-bottom:8px;
+}
+
+.big{
+  font-size:72px;
+  font-family:var(--mono);
+  line-height:1;
+}
+
+.grid{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:12px;
+  margin-top:16px;
+}
+
+.tile{
+  background:var(--card);
+  border-radius:18px;
+  padding:16px;
+}
+
+.tile-value{
+  font-size:28px;
+  font-family:var(--mono);
+  margin-top:8px;
+}
+
+.version-list{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:10px;
+}
+
+.version-item{
+  display:flex;
+  justify-content:space-between;
+  border-bottom:1px solid var(--line);
+  padding-bottom:8px;
+}
+
+.status{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:10px;
+  color:var(--sub);
+}
+
+.dot{
+  width:10px;
+  height:10px;
+  border-radius:50%;
+  background:#0f0;
+}
+
+canvas{
+  width:100%;
+  height:120px;
+  margin-top:20px;
+}
+</style>
+</head>
+
+<body>
+
+<div class="title">Dashboard</div>
+
+<div class="card">
+  <div class="label">Active Players</div>
+  <div class="big" id="activeNow">0</div>
+
+  <div class="grid">
+    <div>
+      <div class="label">Peak Today</div>
+      <div class="tile-value" id="peakToday">0</div>
+    </div>
+
+    <div>
+      <div class="label">All-Time Peak</div>
+      <div class="tile-value" id="peakAlltime">0</div>
+    </div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="tile">
+    <div class="label">Today</div>
+    <div class="tile-value" id="today">0</div>
+  </div>
+
+  <div class="tile">
+    <div class="label">Week</div>
+    <div class="tile-value" id="week">0</div>
+  </div>
+
+  <div class="tile">
+    <div class="label">Month</div>
+    <div class="tile-value" id="month">0</div>
+  </div>
+
+  <div class="tile">
+    <div class="label">All Time</div>
+    <div class="tile-value" id="alltime">0</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="label">Launcher Versions</div>
+
+  <div class="version-list" id="versions"></div>
+
+  <div class="status">
+    <div class="dot"></div>
+    <span>Realtime Sync Enabled</span>
+  </div>
+</div>
+
+<canvas id="chart"></canvas>
+
+<script type="module">
+
+import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
+import {
+  getDatabase,
+  ref,
+  onValue,
+  set
+} from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
     const firebaseConfig = {
       apiKey: "AIzaSyBImlfiRQOoY5kWBU-YsSffKEYTjFJdDe8",
@@ -22,614 +188,183 @@
       measurementId: "G-W6DM9YCQM4"
     };
 
-    const ACTIVE_WINDOW_MS = 5 * 60 * 1000; // 5 minutes
+const app = initializeApp(firebaseConfig);
+const db = getDatabase(app);
 
-    function boundaries() {
-      const now = new Date();
-      const todayStart  = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-      const dow         = (now.getDay() + 6) % 7; 
-      const weekStart   = todayStart - dow * 86400000;
-      const monthStart  = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-      const yearStart   = new Date(now.getFullYear(), 0, 1).getTime();
-      const dateString  = now.toISOString().split('T')[0]; // YYYY-MM-DD
-      return { todayStart, weekStart, monthStart, yearStart, dateString };
+const ACTIVE_WINDOW = 5 * 60 * 1000;
+
+let peakAlltime = 0;
+let peakToday = 0;
+
+const history = Array(30).fill(0);
+
+function boundaries(){
+
+  const now = new Date();
+
+  return {
+
+    today:
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        now.getDate()
+      ).getTime(),
+
+    week:
+      Date.now() - 7 * 86400000,
+
+    month:
+      new Date(
+        now.getFullYear(),
+        now.getMonth(),
+        1
+      ).getTime()
+  };
+}
+
+function update(id,val){
+  document.getElementById(id).textContent =
+    Number(val).toLocaleString();
+}
+
+function drawChart(data){
+
+  const canvas = document.getElementById('chart');
+  const ctx = canvas.getContext('2d');
+
+  const w = canvas.width = canvas.offsetWidth;
+  const h = canvas.height = 120;
+
+  ctx.clearRect(0,0,w,h);
+
+  const max = Math.max(...data,1);
+
+  ctx.beginPath();
+
+  data.forEach((v,i)=>{
+
+    const x = (i/(data.length-1))*w;
+    const y = h - (v/max)*(h-10);
+
+    if(i===0){
+      ctx.moveTo(x,y);
+    }else{
+      ctx.lineTo(x,y);
     }
 
-    let state = {
-      activeNow: 0, peakToday: 0, peakAlltime: 0,
-      today: 0, week: 0, month: 0, year: 0, alltime: 0,
-      uptime: 0, sparkData: Array(30).fill(0),
-      firebaseConnected: false, lastSync: null
-    };
-
-    const sparkHistory = Array(30).fill(0);
-    let db = null;
-    let peaksData = { allTime: 0, daily: {} };
-
-    try {
-      const app = initializeApp(firebaseConfig);
-      db = getDatabase(app);
-    } catch(e) {
-      console.warn('[Firebase] init failed:', e);
-      window.__fbStatus?.(false);
-    }
-
-    function updatePeaksInFirebase(activeNow, dateStr) {
-      if (!db) return;
-      let updated = false;
-
-      // Check and update All-Time Peak
-      if (activeNow > peaksData.allTime) {
-        peaksData.allTime = activeNow;
-        set(ref(db, 'metadata/peaks/allTime'), activeNow);
-        updated = true;
-      }
-
-      // Check and update Daily Peak
-      const currentDailyPeak = peaksData.daily[dateStr] || 0;
-      if (activeNow > currentDailyPeak) {
-        peaksData.daily[dateStr] = activeNow;
-        set(ref(db, `metadata/peaks/daily/${dateStr}`), activeNow);
-        updated = true;
-      }
-
-      if (updated) {
-        state.peakAlltime = peaksData.allTime;
-        state.peakToday = peaksData.daily[dateStr];
-        window.__dash?.(state);
-      }
-    }
-
-    function init() {
-      setInterval(() => {
-        state.uptime++;
-        window.__uptimeTick?.(state.uptime);
-      }, 1000);
-
-      if (!db) {
-        window.__fbStatus?.(false);
-        window.__dash?.(state);
-        return;
-      }
-
-      // 1. Listen to Metadata/Peaks
-      onValue(ref(db, 'metadata/peaks'), (snap) => {
-        if (snap.exists()) {
-          const data = snap.val();
-          peaksData.allTime = data.allTime || 0;
-          peaksData.daily = data.daily || {};
-          
-          const { dateString } = boundaries();
-          state.peakAlltime = peaksData.allTime;
-          state.peakToday = peaksData.daily[dateString] || 0;
-          window.__dash?.(state);
-        }
-      });
-
-      // 2. Listen to active players
-      onValue(ref(db, 'players'), (snap) => {
-        const now = Date.now();
-        const { todayStart, weekStart, monthStart, yearStart, dateString } = boundaries();
-
-        let activeNow = 0, today = 0, week = 0, month = 0, year = 0, alltime = 0;
-
-        if (snap.exists()) {
-          snap.forEach(child => {
-  const data = child.val();
-
-  if (!data || typeof data !== 'object') return;
-
-  const ts = data.lastSeen;
-
-  if (typeof ts !== 'number') return;
-            alltime++;
-            if (ts >= yearStart)  year++;
-            if (ts >= monthStart) month++;
-            if (ts >= weekStart)  week++;
-            if (ts >= todayStart) today++;
-            if (now - ts <= ACTIVE_WINDOW_MS) activeNow++;
-          });
-        }
-
-        sparkHistory.shift();
-        sparkHistory.push(activeNow);
-
-        state = {
-          ...state,
-          activeNow,
-          today, week, month, year, alltime,
-          sparkData: sparkHistory.slice(),
-          firebaseConnected: true,
-          lastSync: now
-        };
-
-        // Ensure state contains latest peaks before dispatching UI update
-        state.peakAlltime = peaksData.allTime || state.peakAlltime;
-        state.peakToday = peaksData.daily[dateString] || state.peakToday;
-
-        window.__fbStatus?.(true);
-        window.__dash?.(state);
-
-        // Update database if new peak reached
-        updatePeaksInFirebase(activeNow, dateString);
-
-      }, (err) => {
-        console.error('[Firebase] read error:', err);
-        window.__fbStatus?.(false);
-      });
-    }
-
-    init();
-    window.__getState = () => state;
-  </script>
-
-  <style>
-    :root {
-      /* Apple monochrome / Dark mode palette */
-      --bg:      #000000;
-      --surface: #1c1c1e;
-      --surface-elevated: #2c2c2e;
-      --line:    #38383a;
-      --text-pri: #ffffff;
-      --text-sec: #ebebf599; /* Apple secondary label */
-      --text-ter: #ebebf54d;
-      
-      --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-      --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
-      
-      --r-md: 14px;
-      --r-lg: 18px;
-      --r-xl: 24px;
-      
-      --safe-t: env(safe-area-inset-top, 0px);
-      --safe-b: env(safe-area-inset-bottom, 0px);
-    }
-
-    *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-    html { background:var(--bg); }
-
-    body {
-      font-family: var(--font);
-      background: var(--bg);
-      color: var(--text-pri);
-      min-height: 100dvh;
-      max-width: 430px;
-      margin: 0 auto;
-      -webkit-font-smoothing: antialiased;
-      position: relative;
-    }
-
-    /* ─── MATERIAL ICON ─── */
-    .mi {
-      font-family:'Material Symbols Rounded';
-      font-style:normal; font-weight:normal; line-height:1;
-      letter-spacing:normal; text-transform:none; white-space:nowrap;
-      display:inline-flex; align-items:center; justify-content:center;
-      user-select:none; vertical-align:middle;
-      font-variation-settings:'FILL' 0,'wght' 300,'GRAD' 0,'opsz' 24;
-    }
-    .mi.f { font-variation-settings:'FILL' 1; }
-    .mi.s14{font-size:14px} .mi.s16{font-size:16px} .mi.s18{font-size:18px}
-    .mi.s20{font-size:20px} .mi.s22{font-size:22px} .mi.s24{font-size:24px}
-
-    /* ─── STATUS BAR ─── */
-    .status-bar {
-      position:sticky; top:0; z-index:100;
-      background:rgba(0,0,0,0.7);
-      backdrop-filter:blur(20px) saturate(1.2);
-      -webkit-backdrop-filter:blur(20px) saturate(1.2);
-      border-bottom:0.5px solid var(--line);
-      display:flex; align-items:center; justify-content:space-between;
-      padding:calc(var(--safe-t) + 12px) 20px 12px;
-    }
-
-    .bar-brand { display:flex; align-items:center; gap:8px; }
-    .bar-logo {
-      width:28px; height:28px; border-radius:8px;
-      background:var(--surface-elevated); 
-      display:flex; align-items:center; justify-content:center;
-      color:var(--text-pri);
-    }
-    .bar-name { font-size:16px; font-weight:600; letter-spacing:-0.4px; }
-    .bar-actions { display:flex; align-items:center; gap:12px; }
-    
-    .fb-dot {
-      width:8px; height:8px; border-radius:50%;
-      background:var(--line); transition:all 0.4s;
-    }
-    .fb-dot.on  { background:var(--text-pri); box-shadow:0 0 8px rgba(255,255,255,0.8); }
-
-    /* ─── SCROLL ─── */
-    .scroll {
-      padding:24px 16px calc(var(--safe-b) + 40px);
-      display:flex; flex-direction:column; gap:16px;
-    }
-
-    /* ─── PAGE HEADER ─── */
-    .page-title {
-      font-size:32px; font-weight:700;
-      letter-spacing:-1px; line-height:1.1; margin-bottom:4px;
-    }
-    .page-sub { font-size:14px; color:var(--text-sec); }
-
-    /* ─── CARDS ─── */
-    .card {
-      background:var(--surface);
-      border-radius:var(--r-xl);
-      padding:20px;
-      position:relative; overflow:hidden;
-    }
-
-    /* ─── HERO CARD ─── */
-    .hero-num {
-      font-family:var(--mono);
-      font-size:72px; font-weight:500;
-      letter-spacing:-3px; line-height:1;
-      margin-bottom:4px; margin-top:8px;
-    }
-    .hero-cap { font-size:14px; color:var(--text-sec); }
-    .hero-rule { height:1px; background:var(--line); margin:20px 0; }
-    .hero-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px; }
-    .hero-metric + .hero-metric { border-left:1px solid var(--line); padding-left:12px; }
-    
-    .hm-lbl { font-size:12px; color:var(--text-sec); margin-bottom:4px; }
-    .hm-val { font-family:var(--mono); font-size:20px; font-weight:600; letter-spacing:-0.5px; }
-
-    /* ─── CHARTS ─── */
-    .chart-hdr {
-      display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;
-    }
-    .chart-title { font-size:15px; font-weight:600; display:flex; align-items:center; gap:6px; }
-    canvas { width:100%!important; display:block; cursor:pointer; }
-    #sparkline { height:100px!important; }
-    #barChart { height:160px!important; margin-top:16px; }
-    
-    /* ─── TOOLTIP ─── */
-    .tooltip {
-      position: fixed;
-      background: rgba(40,40,42,0.95);
-      backdrop-filter: blur(10px);
-      border: 1px solid var(--line);
-      color: var(--text-pri);
-      padding: 6px 12px;
-      border-radius: 8px;
-      font-size: 13px;
-      font-family: var(--mono);
-      pointer-events: none;
-      opacity: 0;
-      transform: translate(-50%, -100%);
-      transition: opacity 0.2s;
-      z-index: 1000;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.5);
-    }
-    .tooltip.show { opacity: 1; }
-
-    /* ─── SEGMENT ─── */
-    .segment {
-      display:flex; background:var(--surface-elevated);
-      border-radius:12px; padding:3px;
-    }
-    .seg {
-      flex:1; padding:8px; border:none; border-radius:10px;
-      background:transparent; color:var(--text-sec); font-family:var(--font);
-      font-size:14px; font-weight:500; cursor:pointer; transition:background 0.2s;
-    }
-    .seg.on { background:var(--line); color:var(--text-pri); }
-
-    /* ─── STATS GRID ─── */
-    .stats-grid { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
-    .stat-tile {
-      background:var(--surface); border-radius:var(--r-lg); padding:16px;
-    }
-    .st-lbl { font-size:13px; color:var(--text-sec); display:flex; align-items:center; gap:6px; margin-bottom:8px; }
-    .st-val { font-family:var(--mono); font-size:26px; font-weight:600; letter-spacing:-1px; margin-bottom:4px; }
-    .st-cap { font-size:12px; color:var(--text-ter); }
-
-    /* ─── FB BANNER ─── */
-    .fb-banner {
-      background:var(--surface); border-radius:var(--r-lg); padding:16px;
-      display:flex; align-items:center; gap:12px; border:1px solid var(--line);
-    }
-    .fb-icon { color:var(--text-sec); }
-    .fb-body { flex:1; }
-    .fb-head { font-size:15px; font-weight:600; }
-    .fb-detail { font-size:13px; color:var(--text-sec); margin-top:2px; }
-
-    /* ─── ANIMATIONS ─── */
-    @keyframes pop {
-      0%{transform:scale(0.95);opacity:0.8;}
-      100%{transform:scale(1);opacity:1;}
-    }
-    .pop { animation:pop 0.2s ease-out; }
-  </style>
-</head>
-<body>
-
-<div id="tooltip" class="tooltip">0</div>
-
-<header class="status-bar">
-  <div class="bar-brand">
-    <div class="bar-logo"><span class="mi s18 f">hub</span></div>
-    <span class="bar-name">Hollow</span>
-  </div>
-  <div class="bar-actions">
-    <div class="fb-dot" id="fbDot" title="Firebase"></div>
-  </div>
-</header>
-
-<main class="scroll">
-  <div class="page-header">
-    <div class="page-title">Dashboard</div>
-    <div class="page-sub" id="syncLabel">Initialising…</div>
-  </div>
-
-  <div class="card">
-    <div class="st-lbl"><span class="mi s16">person</span> Active Now</div>
-    <div class="hero-num" id="activeNow">—</div>
-    <div class="hero-cap">players online</div>
-    <div class="hero-rule"></div>
-    <div class="hero-row">
-      <div class="hero-metric">
-        <div class="hm-lbl">Peak Today</div>
-        <div class="hm-val" id="peakToday">—</div>
-      </div>
-      <div class="hero-metric">
-        <div class="hm-lbl">All-Time Peak</div>
-        <div class="hm-val" id="peakAlltime">—</div>
-      </div>
-      <div class="hero-metric">
-        <div class="hm-lbl">Uptime</div>
-        <div class="hm-val" id="uptimeHero">0:00</div>
-      </div>
-    </div>
-  </div>
-
-  <div class="card">
-    <div class="chart-hdr">
-      <div class="chart-title"><span class="mi s18">ssid_chart</span> Live Activity</div>
-    </div>
-    <canvas id="sparkline"></canvas>
-  </div>
-
-  <div class="segment">
-    <button class="seg on" onclick="setView('periods',this)">Periods</button>
-    <button class="seg" onclick="setView('chart',this)">Chart</button>
-  </div>
-
-  <div id="view-periods">
-    <div class="stats-grid">
-      <div class="stat-tile">
-        <div class="st-lbl"><span class="mi s16">today</span> Today</div>
-        <div class="st-val" id="statToday">—</div>
-        <div class="st-cap">sessions</div>
-      </div>
-      <div class="stat-tile">
-        <div class="st-lbl"><span class="mi s16">date_range</span> Week</div>
-        <div class="st-val" id="statWeek">—</div>
-        <div class="st-cap">sessions</div>
-      </div>
-      <div class="stat-tile">
-        <div class="st-lbl"><span class="mi s16">calendar_month</span> Month</div>
-        <div class="st-val" id="statMonth">—</div>
-        <div class="st-cap">sessions</div>
-      </div>
-      <div class="stat-tile">
-        <div class="st-lbl"><span class="mi s16">military_tech</span> All Time</div>
-        <div class="st-val" id="statAlltime">—</div>
-        <div class="st-cap">total</div>
-      </div>
-    </div>
-  </div>
-
-  <div id="view-chart" style="display:none;">
-    <div class="card">
-      <div class="chart-title"><span class="mi s18">bar_chart</span> Sessions</div>
-      <canvas id="barChart"></canvas>
-    </div>
-  </div>
-
-  <div class="fb-banner">
-    <span class="mi s24 fb-icon" id="fbIcon">cloud_off</span>
-    <div class="fb-body">
-      <div class="fb-head" id="fbHead">Not Connected</div>
-      <div class="fb-detail" id="fbDetail">Connecting to Firebase...</div>
-    </div>
-  </div>
-
-</main>
-
-<script>
-  // ─── UI UTILS ───
-  const tooltip = document.getElementById('tooltip');
-
-  function showTooltip(x, y, text) {
-    tooltip.textContent = text;
-    tooltip.style.left = `${x}px`;
-    tooltip.style.top = `${y - 10}px`;
-    tooltip.classList.add('show');
-    clearTimeout(window._ttTimer);
-    window._ttTimer = setTimeout(() => tooltip.classList.remove('show'), 2000);
-  }
-
-  function fmt(n) {
-    if(n==null)return'—';
-    if(n>=1e6) return(n/1e6).toFixed(1)+'M';
-    if(n>=1e3) return(n/1e3).toFixed(1)+'K';
-    return Math.round(n).toLocaleString();
-  }
-
-  function fmtUpShort(s) {
-    const m=Math.floor(s/60),sec=s%60;
-    if(m<60) return`${m}:${String(sec).padStart(2,'0')}`;
-    const h=Math.floor(m/60),rm=m%60;
-    return`${h}:${String(rm).padStart(2,'0')}`;
-  }
-
-  function upd(id,val) {
-    const el=document.getElementById(id);
-    if(!el) return;
-    const str=String(val);
-    if(el.textContent===str) return;
-    el.textContent=str;
-    el.classList.remove('pop');
-    void el.offsetWidth;
-    el.classList.add('pop');
-  }
-
-  // ─── SPARKLINE (Monochrome) ───
-  let sparkData = Array(30).fill(0);
-  const sc = document.getElementById('sparkline');
-  const sx = sc.getContext('2d');
-
-  function drawSpark(data) {
-    const dpr = devicePixelRatio||1;
-    const w = sc.offsetWidth, h = 100;
-    sc.width = w*dpr; sc.height = h*dpr;
-    sx.scale(dpr,dpr); sx.clearRect(0,0,w,h);
-    const max = Math.max(...data, 1);
-    const pts = data.map((v,i)=>({x:(i/(data.length-1))*w, y:h-(v/max)*(h-14)-7}));
-
-    // Filled area (White transparent gradient)
-    const g = sx.createLinearGradient(0,0,0,h);
-    g.addColorStop(0,'rgba(255,255,255,0.15)');
-    g.addColorStop(1,'rgba(255,255,255,0.0)');
-    sx.beginPath(); sx.moveTo(pts[0].x,pts[0].y);
-    pts.forEach((p,i)=>{if(i){const pp=pts[i-1];sx.bezierCurveTo((pp.x+p.x)/2,pp.y,(pp.x+p.x)/2,p.y,p.x,p.y);}});
-    sx.lineTo(w,h); sx.lineTo(0,h); sx.closePath();
-    sx.fillStyle=g; sx.fill();
-
-    // Line (Solid white)
-    sx.beginPath(); sx.moveTo(pts[0].x,pts[0].y);
-    pts.forEach((p,i)=>{if(i){const pp=pts[i-1];sx.bezierCurveTo((pp.x+p.x)/2,pp.y,(pp.x+p.x)/2,p.y,p.x,p.y);}});
-    sx.strokeStyle='#ffffff'; sx.lineWidth=2; sx.stroke();
-
-    // Tip dot
-    const lp=pts[pts.length-1];
-    sx.beginPath(); sx.arc(lp.x,lp.y,4,0,Math.PI*2);
-    sx.fillStyle='#ffffff'; sx.fill();
-    sx.shadowColor = 'rgba(255,255,255,0.5)';
-    sx.shadowBlur = 8; sx.fill(); sx.shadowBlur = 0;
-  }
-
-  // Sparkline Tooltip Listener
-  sc.addEventListener('click', (e) => {
-    const rect = sc.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const idx = Math.max(0, Math.min(sparkData.length - 1, Math.round((x / rect.width) * (sparkData.length - 1))));
-    showTooltip(e.clientX, e.clientY, `Active: ${sparkData[idx]}`);
   });
 
-  // ─── BAR CHART (Monochrome) ───
-  function drawBar(t, w, m, y) {
-    const c = document.getElementById('barChart');
-    if (!c) return;
-    const ctx = c.getContext('2d');
-    const dpr = window.devicePixelRatio || 1;
-    const cw = c.offsetWidth, ch = 160;
+  ctx.strokeStyle = "#fff";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
 
-    if (!cw || !isFinite(cw)) return;
+onValue(ref(db,'players'), snap => {
 
-    c.width = cw * dpr; c.height = ch * dpr;
-    ctx.scale(dpr, dpr); ctx.clearRect(0, 0, cw, ch);
+  const now = Date.now();
 
-    const vals = [t, w, m, y].map(v => (isFinite(v) && v >= 0 ? Number(v) : 0));
-    const labels = ['Today', 'Week', 'Month', 'Year'];
-    const max = Math.max(...vals, 1);
-    const colW = cw / vals.length;
-    const bw = Math.min(colW - 20, 40);
+  const b = boundaries();
 
-    // Save bar positions for tooltip
-    c._barData = [];
+  let active = 0;
+  let today = 0;
+  let week = 0;
+  let month = 0;
+  let alltime = 0;
 
-    vals.forEach((v, i) => {
-      const x = i * colW + (colW - bw) / 2;
-      const bh = Math.max((v / max) * (ch - 30), 4);
-      const by = ch - bh - 20;
+  const versions = {};
 
-      c._barData.push({ x, y: by, w: bw, h: bh, val: v, label: labels[i] });
+  if(snap.exists()){
 
-      ctx.fillStyle = '#ffffff';
-      ctx.beginPath();
-      ctx.roundRect(x, by, bw, bh, [6,6,0,0]);
-      ctx.fill();
+    snap.forEach(child => {
 
-      ctx.fillStyle = 'rgba(255,255,255,0.6)';
-      ctx.font = "500 12px -apple-system, sans-serif";
-      ctx.textAlign = 'center';
-      ctx.fillText(labels[i], x + bw / 2, ch - 4);
+      const data = child.val();
+
+      if(!data) return;
+
+      const ts = data.lastSeen;
+
+      if(typeof ts !== 'number') return;
+
+      alltime++;
+
+      if(ts >= b.today) today++;
+      if(ts >= b.week) week++;
+      if(ts >= b.month) month++;
+
+      if(now - ts <= ACTIVE_WINDOW){
+        active++;
+      }
+
+      const version = data.version || "Unknown";
+
+      versions[version] =
+        (versions[version] || 0) + 1;
+
     });
+
   }
 
-  // Bar Chart Tooltip Listener
-  document.getElementById('barChart').addEventListener('click', (e) => {
-    const c = e.target;
-    if (!c._barData) return;
-    const rect = c.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+  history.shift();
+  history.push(active);
 
-    const bar = c._barData.find(b => x >= b.x && x <= b.x + b.w);
-    if (bar) {
-      showTooltip(e.clientX, e.clientY, `${bar.label}: ${fmt(bar.val)}`);
-    }
-  });
+  drawChart(history);
 
-  // ─── CALLBACKS ───
-  window.__dash = function(s) {
-    upd('activeNow',   fmt(s.activeNow));
-    upd('peakToday',   fmt(s.peakToday));
-    upd('peakAlltime', fmt(s.peakAlltime));
-    upd('statToday',   fmt(s.today));
-    upd('statWeek',    fmt(s.week));
-    upd('statMonth',   fmt(s.month));
-    upd('statAlltime', fmt(s.alltime));
+  if(active > peakAlltime){
 
-    sparkData = s.sparkData.slice();
-    drawSpark(sparkData);
-    if (document.getElementById('view-chart').style.display !== 'none') {
-        drawBar(s.today, s.week, s.month, s.year);
-    }
+    peakAlltime = active;
 
-    const sl=document.getElementById('syncLabel');
-    if(s.firebaseConnected) {
-      sl.textContent = s.lastSync
-        ? `Live Sync · ${new Date(s.lastSync).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit'})}`
-        : 'Connecting...';
-    } else {
-      sl.textContent = 'Offline';
-    }
-  };
+    set(
+      ref(db,'metadata/peakAlltime'),
+      active
+    );
+  }
 
-  window.__uptimeTick = function(s) {
-    document.getElementById('uptimeHero').textContent = fmtUpShort(s);
-  };
+  if(active > peakToday){
 
-  window.__fbStatus = function(ok) {
-    document.getElementById('fbDot').className  = 'fb-dot'+(ok?' on':'');
-    document.getElementById('fbHead').textContent   = ok ? 'Database Connected' : 'Connection Lost';
-    document.getElementById('fbDetail').textContent = ok ? 'Receiving real-time updates.' : 'Check your internet or config.';
-    document.getElementById('fbIcon').textContent = ok ? 'cloud_done' : 'cloud_off';
-  };
+    peakToday = active;
 
-  function setView(name, btn) {
-    ['periods','chart'].forEach(v=>{
-      document.getElementById('view-'+v).style.display = v===name?'':'none';
+    set(
+      ref(db,'metadata/peakToday'),
+      active
+    );
+  }
+
+  update('activeNow', active);
+  update('peakToday', peakToday);
+  update('peakAlltime', peakAlltime);
+
+  update('today', today);
+  update('week', week);
+  update('month', month);
+  update('alltime', alltime);
+
+  const versionsEl =
+    document.getElementById('versions');
+
+  versionsEl.innerHTML = '';
+
+  Object.entries(versions)
+    .sort((a,b)=>b[1]-a[1])
+    .forEach(([version,count])=>{
+
+      const item =
+        document.createElement('div');
+
+      item.className = 'version-item';
+
+      item.innerHTML = `
+        <span>${version}</span>
+        <span>${count}</span>
+      `;
+
+      versionsEl.appendChild(item);
+
     });
-    document.querySelectorAll('.seg').forEach(b=>b.classList.remove('on'));
-    btn.classList.add('on');
-    if(name==='chart') {
-      const s=window.__getState?.()??{};
-      setTimeout(()=>drawBar(s.today,s.week,s.month,s.year),10);
-    }
-  }
 
-  window.addEventListener('resize', () => {
-    drawSpark(sparkData);
-    const s = window.__getState?.() ?? {};
-    if (document.getElementById('view-chart').style.display !== 'none') {
-       drawBar(s.today, s.week, s.month, s.year);
-    }
-  });
+});
+
 </script>
+
 </body>
 </html>
