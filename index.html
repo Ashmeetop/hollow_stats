@@ -27,13 +27,13 @@ body{
   font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   max-width:430px;
   margin:auto;
-  padding:20px;
+  padding:16px;
 }
 
 .title{
   font-size:32px;
   font-weight:700;
-  margin-bottom:20px;
+  margin-bottom:24px;
 }
 
 .card{
@@ -45,14 +45,18 @@ body{
 
 .label{
   color:var(--sub);
-  font-size:14px;
+  font-size:13px;
+  text-transform:uppercase;
+  letter-spacing:0.5px;
   margin-bottom:8px;
 }
 
 .big{
-  font-size:72px;
+  font-size:56px;
   font-family:var(--mono);
+  font-weight:600;
   line-height:1;
+  margin-bottom:20px;
 }
 
 .grid{
@@ -62,51 +66,76 @@ body{
   margin-top:16px;
 }
 
+@media (max-width:380px){
+  .grid{
+    grid-template-columns:1fr;
+  }
+  
+  .big{
+    font-size:48px;
+  }
+  
+  body{
+    padding:12px;
+  }
+}
+
 .tile{
   background:var(--card);
-  border-radius:18px;
+  border-radius:16px;
   padding:16px;
 }
 
 .tile-value{
   font-size:28px;
   font-family:var(--mono);
+  font-weight:600;
   margin-top:8px;
 }
 
 .version-list{
   display:flex;
   flex-direction:column;
-  gap:10px;
-  margin-top:10px;
+  gap:8px;
+  margin-top:12px;
+  max-height:200px;
+  overflow-y:auto;
 }
 
 .version-item{
   display:flex;
   justify-content:space-between;
+  align-items:center;
   border-bottom:1px solid var(--line);
-  padding-bottom:8px;
+  padding:10px 0;
+  font-size:14px;
+}
+
+.version-item:last-child{
+  border-bottom:none;
 }
 
 .status{
   display:flex;
   align-items:center;
   gap:8px;
-  margin-top:10px;
+  margin-top:14px;
   color:var(--sub);
+  font-size:13px;
 }
 
 .dot{
-  width:10px;
-  height:10px;
+  width:8px;
+  height:8px;
   border-radius:50%;
   background:#0f0;
+  flex-shrink:0;
 }
 
 canvas{
   width:100%;
-  height:120px;
-  margin-top:20px;
+  height:100px;
+  margin-top:16px;
 }
 </style>
 </head>
@@ -139,12 +168,12 @@ canvas{
   </div>
 
   <div class="tile">
-    <div class="label">Week</div>
+    <div class="label">This Week</div>
     <div class="tile-value" id="week">0</div>
   </div>
 
   <div class="tile">
-    <div class="label">Month</div>
+    <div class="label">This Month</div>
     <div class="tile-value" id="month">0</div>
   </div>
 
@@ -177,16 +206,16 @@ import {
   set
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
-    const firebaseConfig = {
-      apiKey: "AIzaSyBImlfiRQOoY5kWBU-YsSffKEYTjFJdDe8",
-      authDomain: "hollow-launcher-api.firebaseapp.com",
-      databaseURL: "https://hollow-launcher-api-default-rtdb.asia-southeast1.firebasedatabase.app",
-      projectId: "hollow-launcher-api",
-      storageBucket: "hollow-launcher-api.firebasestorage.app",
-      messagingSenderId: "981071558548",
-      appId: "1:981071558548:web:df8bcde1e1fd0a2cb80181",
-      measurementId: "G-W6DM9YCQM4"
-    };
+const firebaseConfig = {
+  apiKey: "AIzaSyBImlfiRQOoY5kWBU-YsSffKEYTjFJdDe8",
+  authDomain: "hollow-launcher-api.firebaseapp.com",
+  databaseURL: "https://hollow-launcher-api-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "hollow-launcher-api",
+  storageBucket: "hollow-launcher-api.firebasestorage.app",
+  messagingSenderId: "981071558548",
+  appId: "1:981071558548:web:df8bcde1e1fd0a2cb80181",
+  measurementId: "G-W6DM9YCQM4"
+};
 
 const app = initializeApp(firebaseConfig);
 const db = getDatabase(app);
@@ -195,76 +224,88 @@ const ACTIVE_WINDOW = 5 * 60 * 1000;
 
 let peakAlltime = 0;
 let peakToday = 0;
+let lastPeakResetDate = new Date().toDateString();
 
 const history = Array(30).fill(0);
 
+function getStartOfDay(date = new Date()){
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
+function getStartOfWeek(date = new Date()){
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day;
+  const startDate = new Date(d.setDate(diff));
+  startDate.setHours(0, 0, 0, 0);
+  return startDate.getTime();
+}
+
+function getStartOfMonth(date = new Date()){
+  const d = new Date(date);
+  d.setDate(1);
+  d.setHours(0, 0, 0, 0);
+  return d.getTime();
+}
+
 function boundaries(){
-
   const now = new Date();
-
+  
   return {
-
-    today:
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        now.getDate()
-      ).getTime(),
-
-    week:
-      Date.now() - 7 * 86400000,
-
-    month:
-      new Date(
-        now.getFullYear(),
-        now.getMonth(),
-        1
-      ).getTime()
+    today: getStartOfDay(now),
+    week: getStartOfWeek(now),
+    month: getStartOfMonth(now)
   };
 }
 
-function update(id,val){
+function update(id, val){
   document.getElementById(id).textContent =
     Number(val).toLocaleString();
 }
 
 function drawChart(data){
-
   const canvas = document.getElementById('chart');
   const ctx = canvas.getContext('2d');
 
   const w = canvas.width = canvas.offsetWidth;
-  const h = canvas.height = 120;
+  const h = canvas.height = 100;
 
-  ctx.clearRect(0,0,w,h);
+  ctx.clearRect(0, 0, w, h);
 
-  const max = Math.max(...data,1);
+  const max = Math.max(...data, 1);
 
   ctx.beginPath();
 
-  data.forEach((v,i)=>{
+  data.forEach((v, i) => {
+    const x = (i / (data.length - 1)) * w;
+    const y = h - (v / max) * (h - 10);
 
-    const x = (i/(data.length-1))*w;
-    const y = h - (v/max)*(h-10);
-
-    if(i===0){
-      ctx.moveTo(x,y);
-    }else{
-      ctx.lineTo(x,y);
+    if(i === 0){
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
     }
-
   });
 
   ctx.strokeStyle = "#fff";
   ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
   ctx.stroke();
 }
 
-onValue(ref(db,'players'), snap => {
-
+onValue(ref(db, 'players'), snap => {
   const now = Date.now();
-
   const b = boundaries();
+
+  // Reset peakToday if day has changed
+  const todayString = new Date().toDateString();
+  if(todayString !== lastPeakResetDate){
+    lastPeakResetDate = todayString;
+    peakToday = 0;
+  }
 
   let active = 0;
   let today = 0;
@@ -275,9 +316,7 @@ onValue(ref(db,'players'), snap => {
   const versions = {};
 
   if(snap.exists()){
-
     snap.forEach(child => {
-
       const data = child.val();
 
       if(!data) return;
@@ -297,12 +336,8 @@ onValue(ref(db,'players'), snap => {
       }
 
       const version = data.version || "Unknown";
-
-      versions[version] =
-        (versions[version] || 0) + 1;
-
+      versions[version] = (versions[version] || 0) + 1;
     });
-
   }
 
   history.shift();
@@ -311,23 +346,13 @@ onValue(ref(db,'players'), snap => {
   drawChart(history);
 
   if(active > peakAlltime){
-
     peakAlltime = active;
-
-    set(
-      ref(db,'metadata/peakAlltime'),
-      active
-    );
+    set(ref(db, 'metadata/peakAlltime'), active);
   }
 
   if(active > peakToday){
-
     peakToday = active;
-
-    set(
-      ref(db,'metadata/peakToday'),
-      active
-    );
+    set(ref(db, 'metadata/peakToday'), active);
   }
 
   update('activeNow', active);
@@ -339,29 +364,22 @@ onValue(ref(db,'players'), snap => {
   update('month', month);
   update('alltime', alltime);
 
-  const versionsEl =
-    document.getElementById('versions');
-
+  const versionsEl = document.getElementById('versions');
   versionsEl.innerHTML = '';
 
   Object.entries(versions)
-    .sort((a,b)=>b[1]-a[1])
-    .forEach(([version,count])=>{
-
-      const item =
-        document.createElement('div');
-
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([version, count]) => {
+      const item = document.createElement('div');
       item.className = 'version-item';
 
       item.innerHTML = `
         <span>${version}</span>
-        <span>${count}</span>
+        <span style="color:var(--sub)">${count}</span>
       `;
 
       versionsEl.appendChild(item);
-
     });
-
 });
 
 </script>
