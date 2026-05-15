@@ -1,220 +1,96 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>Hollow Dashboard</title>
-
-<style>
-:root{
-  --bg:#000;
-  --card:#1c1c1e;
-  --line:#2c2c2e;
-  --text:#fff;
-  --sub:#98989f;
-  --mono:ui-monospace,SFMono-Regular,Menlo,monospace;
-}
-
-*{
-  margin:0;
-  padding:0;
-  box-sizing:border-box;
-}
-
-body{
-  background:var(--bg);
-  color:var(--text);
-  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-  max-width:430px;
-  margin:auto;
-  padding:16px;
-}
-
-.title{
-  font-size:32px;
-  font-weight:700;
-  margin-bottom:24px;
-}
-
-.card{
-  background:var(--card);
-  border-radius:24px;
-  padding:20px;
-  margin-bottom:16px;
-}
-
-.label{
-  color:var(--sub);
-  font-size:13px;
-  text-transform:uppercase;
-  letter-spacing:0.5px;
-  margin-bottom:8px;
-}
-
-.big{
-  font-size:56px;
-  font-family:var(--mono);
-  font-weight:600;
-  line-height:1;
-  margin-bottom:20px;
-}
-
-.grid{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:12px;
-  margin-top:16px;
-}
-
-@media (max-width:380px){
-  .grid{
-    grid-template-columns:1fr;
-  }
-  
-  .big{
-    font-size:48px;
-  }
-  
-  body{
-    padding:12px;
-  }
-}
-
-.tile{
-  background:var(--card);
-  border-radius:16px;
-  padding:16px;
-}
-
-.tile-value{
-  font-size:28px;
-  font-family:var(--mono);
-  font-weight:600;
-  margin-top:8px;
-}
-
-.version-list{
-  display:flex;
-  flex-direction:column;
-  gap:8px;
-  margin-top:12px;
-  max-height:200px;
-  overflow-y:auto;
-}
-
-.version-item{
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-  border-bottom:1px solid var(--line);
-  padding:10px 0;
-  font-size:14px;
-}
-
-.version-item:last-child{
-  border-bottom:none;
-}
-
-.status{
-  display:flex;
-  align-items:center;
-  gap:8px;
-  margin-top:14px;
-  color:var(--sub);
-  font-size:13px;
-}
-
-.dot{
-  width:8px;
-  height:8px;
-  border-radius:50%;
-  background:#0f0;
-  flex-shrink:0;
-}
-
-canvas{
-  width:100%;
-  height:100px;
-  margin-top:16px;
-}
-</style>
-</head>
-
-<body>
-
-<div class="title">Dashboard</div>
-
-<div class="card">
-  <div class="label">Active Players</div>
-  <div class="big" id="activeNow">0</div>
-
-  <div class="grid">
-    <div>
-      <div class="label">Peak Today</div>
-      <div class="tile-value" id="peakToday">0</div>
-    </div>
-
-    <div>
-      <div class="label">All-Time Peak</div>
-      <div class="tile-value" id="peakAlltime">0</div>
-    </div>
-  </div>
-</div>
-
-<div class="grid">
-  <div class="tile">
-    <div class="label">Today</div>
-    <div class="tile-value" id="today">0</div>
-  </div>
-
-  <div class="tile">
-    <div class="label">This Week</div>
-    <div class="tile-value" id="week">0</div>
-  </div>
-
-  <div class="tile">
-    <div class="label">This Month</div>
-    <div class="tile-value" id="month">0</div>
-  </div>
-
-  <div class="tile">
-    <div class="label">All Time</div>
-    <div class="tile-value" id="alltime">0</div>
-  </div>
-</div>
-
-<div class="card">
-  <div class="label">Launcher Versions</div>
-
-  <div class="version-list" id="versions"></div>
-
-  <div class="status">
-    <div class="dot"></div>
-    <span>Realtime Sync Enabled</span>
-  </div>
-</div>
-
-<canvas id="chart"></canvas>
-
-<script type="module">
-
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  ThemeProvider,
+  createTheme,
+  Container,
+  Card,
+  CardContent,
+  Typography,
+  Grid,
+  Box,
+  Paper,
+} from '@mui/material';
 import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js';
 import {
   getDatabase,
   ref,
   onValue,
-  set
+  set,
 } from 'https://www.gstatic.com/firebasejs/10.12.2/firebase-database.js';
 
+const darkTheme = createTheme({
+  palette: {
+    mode: 'dark',
+    background: {
+      default: '#000000',
+      paper: '#1c1c1e',
+    },
+    primary: {
+      main: '#ffffff',
+    },
+    secondary: {
+      main: '#98989f',
+    },
+  },
+  typography: {
+    fontFamily: [
+      '-apple-system',
+      'BlinkMacSystemFont',
+      '"Segoe UI"',
+      'Roboto',
+      'sans-serif',
+    ].join(','),
+    h1: {
+      fontSize: '3.5rem',
+      fontWeight: 600,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    },
+    h3: {
+      fontSize: '1.75rem',
+      fontWeight: 600,
+      fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace',
+    },
+    subtitle2: {
+      fontSize: '0.813rem',
+      color: '#98989f',
+      textTransform: 'uppercase',
+      letterSpacing: '0.5px',
+    },
+    body2: {
+      fontSize: '0.875rem',
+      color: '#98989f',
+    },
+  },
+  components: {
+    MuiCard: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1c1c1e',
+          borderRadius: '24px',
+          border: 'none',
+        },
+      },
+    },
+    MuiPaper: {
+      styleOverrides: {
+        root: {
+          backgroundColor: '#1c1c1e',
+          borderRadius: '16px',
+        },
+      },
+    },
+  },
+});
+
 const firebaseConfig = {
-  apiKey: "AIzaSyBImlfiRQOoY5kWBU-YsSffKEYTjFJdDe8",
-  authDomain: "hollow-launcher-api.firebaseapp.com",
-  databaseURL: "https://hollow-launcher-api-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "hollow-launcher-api",
-  storageBucket: "hollow-launcher-api.firebasestorage.app",
-  messagingSenderId: "981071558548",
-  appId: "1:981071558548:web:df8bcde1e1fd0a2cb80181",
-  measurementId: "G-W6DM9YCQM4"
+  apiKey: 'AIzaSyBImlfiRQOoY5kWBU-YsSffKEYTjFJdDe8',
+  authDomain: 'hollow-launcher-api.firebaseapp.com',
+  databaseURL: 'https://hollow-launcher-api-default-rtdb.asia-southeast1.firebasedatabase.app',
+  projectId: 'hollow-launcher-api',
+  storageBucket: 'hollow-launcher-api.firebasestorage.app',
+  messagingSenderId: '981071558548',
+  appId: '1:981071558548:web:df8bcde1e1fd0a2cb80181',
+  measurementId: 'G-W6DM9YCQM4',
 };
 
 const app = initializeApp(firebaseConfig);
@@ -222,19 +98,13 @@ const db = getDatabase(app);
 
 const ACTIVE_WINDOW = 5 * 60 * 1000;
 
-let peakAlltime = 0;
-let peakToday = 0;
-let lastPeakResetDate = new Date().toDateString();
-
-const history = Array(30).fill(0);
-
-function getStartOfDay(date = new Date()){
+function getStartOfDay(date = new Date()) {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-function getStartOfWeek(date = new Date()){
+function getStartOfWeek(date = new Date()) {
   const d = new Date(date);
   const day = d.getDay();
   const diff = d.getDate() - day;
@@ -243,146 +113,280 @@ function getStartOfWeek(date = new Date()){
   return startDate.getTime();
 }
 
-function getStartOfMonth(date = new Date()){
+function getStartOfMonth(date = new Date()) {
   const d = new Date(date);
   d.setDate(1);
   d.setHours(0, 0, 0, 0);
   return d.getTime();
 }
 
-function boundaries(){
-  const now = new Date();
-  
-  return {
-    today: getStartOfDay(now),
-    week: getStartOfWeek(now),
-    month: getStartOfMonth(now)
-  };
-}
+function HollowDashboard() {
+  const [activeNow, setActiveNow] = useState(0);
+  const [peakToday, setPeakToday] = useState(0);
+  const [peakAlltime, setPeakAlltime] = useState(0);
+  const [today, setToday] = useState(0);
+  const [week, setWeek] = useState(0);
+  const [month, setMonth] = useState(0);
+  const [alltime, setAlltime] = useState(0);
+  const [versions, setVersions] = useState([]);
+  const [history, setHistory] = useState(Array(30).fill(0));
+  const canvasRef = useRef(null);
 
-function update(id, val){
-  document.getElementById(id).textContent =
-    Number(val).toLocaleString();
-}
+  const lastPeakResetRef = useRef(new Date().toDateString());
+  const peakTodayRef = useRef(0);
+  const peakAlltimeRef = useRef(0);
 
-function drawChart(data){
-  const canvas = document.getElementById('chart');
-  const ctx = canvas.getContext('2d');
+  useEffect(() => {
+    const unsubscribe = onValue(ref(db, 'players'), (snap) => {
+      const now = Date.now();
+      const boundaries = {
+        today: getStartOfDay(),
+        week: getStartOfWeek(),
+        month: getStartOfMonth(),
+      };
 
-  const w = canvas.width = canvas.offsetWidth;
-  const h = canvas.height = 100;
-
-  ctx.clearRect(0, 0, w, h);
-
-  const max = Math.max(...data, 1);
-
-  ctx.beginPath();
-
-  data.forEach((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - (v / max) * (h - 10);
-
-    if(i === 0){
-      ctx.moveTo(x, y);
-    } else {
-      ctx.lineTo(x, y);
-    }
-  });
-
-  ctx.strokeStyle = "#fff";
-  ctx.lineWidth = 2;
-  ctx.lineCap = "round";
-  ctx.lineJoin = "round";
-  ctx.stroke();
-}
-
-onValue(ref(db, 'players'), snap => {
-  const now = Date.now();
-  const b = boundaries();
-
-  // Reset peakToday if day has changed
-  const todayString = new Date().toDateString();
-  if(todayString !== lastPeakResetDate){
-    lastPeakResetDate = todayString;
-    peakToday = 0;
-  }
-
-  let active = 0;
-  let today = 0;
-  let week = 0;
-  let month = 0;
-  let alltime = 0;
-
-  const versions = {};
-
-  if(snap.exists()){
-    snap.forEach(child => {
-      const data = child.val();
-
-      if(!data) return;
-
-      const ts = data.lastSeen;
-
-      if(typeof ts !== 'number') return;
-
-      alltime++;
-
-      if(ts >= b.today) today++;
-      if(ts >= b.week) week++;
-      if(ts >= b.month) month++;
-
-      if(now - ts <= ACTIVE_WINDOW){
-        active++;
+      const todayString = new Date().toDateString();
+      if (todayString !== lastPeakResetRef.current) {
+        lastPeakResetRef.current = todayString;
+        peakTodayRef.current = 0;
       }
 
-      const version = data.version || "Unknown";
-      versions[version] = (versions[version] || 0) + 1;
+      let active = 0;
+      let todayCount = 0;
+      let weekCount = 0;
+      let monthCount = 0;
+      let alltimeCount = 0;
+      const versionMap = {};
+
+      if (snap.exists()) {
+        snap.forEach((child) => {
+          const data = child.val();
+          if (!data) return;
+
+          const ts = data.lastSeen;
+          if (typeof ts !== 'number') return;
+
+          alltimeCount++;
+
+          if (ts >= boundaries.today) todayCount++;
+          if (ts >= boundaries.week) weekCount++;
+          if (ts >= boundaries.month) monthCount++;
+
+          if (now - ts <= ACTIVE_WINDOW) {
+            active++;
+          }
+
+          const version = data.version || 'Unknown';
+          versionMap[version] = (versionMap[version] || 0) + 1;
+        });
+      }
+
+      setHistory((prev) => {
+        const newHistory = [...prev];
+        newHistory.shift();
+        newHistory.push(active);
+        return newHistory;
+      });
+
+      if (active > peakAlltimeRef.current) {
+        peakAlltimeRef.current = active;
+        setPeakAlltime(active);
+        set(ref(db, 'metadata/peakAlltime'), active);
+      }
+
+      if (active > peakTodayRef.current) {
+        peakTodayRef.current = active;
+        setPeakToday(active);
+        set(ref(db, 'metadata/peakToday'), active);
+      }
+
+      setActiveNow(active);
+      setToday(todayCount);
+      setWeek(weekCount);
+      setMonth(monthCount);
+      setAlltime(alltimeCount);
+
+      const sortedVersions = Object.entries(versionMap)
+        .sort((a, b) => b[1] - a[1])
+        .map(([version, count]) => ({ version, count }));
+
+      setVersions(sortedVersions);
     });
-  }
 
-  history.shift();
-  history.push(active);
+    return () => unsubscribe();
+  }, []);
 
-  drawChart(history);
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
 
-  if(active > peakAlltime){
-    peakAlltime = active;
-    set(ref(db, 'metadata/peakAlltime'), active);
-  }
+    const ctx = canvas.getContext('2d');
+    const w = (canvas.width = canvas.offsetWidth);
+    const h = 120;
 
-  if(active > peakToday){
-    peakToday = active;
-    set(ref(db, 'metadata/peakToday'), active);
-  }
+    ctx.clearRect(0, 0, w, h);
 
-  update('activeNow', active);
-  update('peakToday', peakToday);
-  update('peakAlltime', peakAlltime);
+    const max = Math.max(...history, 1);
 
-  update('today', today);
-  update('week', week);
-  update('month', month);
-  update('alltime', alltime);
+    ctx.beginPath();
+    history.forEach((v, i) => {
+      const x = (i / (history.length - 1)) * w;
+      const y = h - (v / max) * (h - 10);
 
-  const versionsEl = document.getElementById('versions');
-  versionsEl.innerHTML = '';
-
-  Object.entries(versions)
-    .sort((a, b) => b[1] - a[1])
-    .forEach(([version, count]) => {
-      const item = document.createElement('div');
-      item.className = 'version-item';
-
-      item.innerHTML = `
-        <span>${version}</span>
-        <span style="color:var(--sub)">${count}</span>
-      `;
-
-      versionsEl.appendChild(item);
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
     });
-});
 
-</script>
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke();
+  }, [history]);
 
-</body>
-</html>
+  return (
+    <ThemeProvider theme={darkTheme}>
+      <Box sx={{ backgroundColor: '#000000', minHeight: '100vh', py: 3 }}>
+        <Container maxWidth="sm">
+          <Typography
+            variant="h1"
+            sx={{
+              mb: 3,
+              fontSize: { xs: '2.5rem', sm: '3.5rem' },
+              fontWeight: 600,
+            }}
+          >
+            Dashboard
+          </Typography>
+
+          <Card sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                Active Players
+              </Typography>
+              <Typography
+                variant="h1"
+                sx={{ mb: 2, fontSize: { xs: '3rem', sm: '3.5rem' } }}
+              >
+                {activeNow.toLocaleString()}
+              </Typography>
+
+              <Grid container spacing={1.5}>
+                <Grid item xs={6}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      Peak Today
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontSize: '1.75rem' }}>
+                      {peakToday.toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Grid>
+                <Grid item xs={6}>
+                  <Box>
+                    <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                      All-Time Peak
+                    </Typography>
+                    <Typography variant="h3" sx={{ fontSize: '1.75rem' }}>
+                      {peakAlltime.toLocaleString()}
+                    </Typography>
+                  </Box>
+                </Grid>
+              </Grid>
+            </CardContent>
+          </Card>
+
+          <Grid container spacing={2} sx={{ mb: 2 }}>
+            {[
+              { label: 'Today', value: today },
+              { label: 'This Week', value: week },
+              { label: 'This Month', value: month },
+              { label: 'All Time', value: alltime },
+            ].map((stat) => (
+              <Grid item xs={6} key={stat.label}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="subtitle2" sx={{ mb: 1 }}>
+                    {stat.label}
+                  </Typography>
+                  <Typography
+                    variant="h3"
+                    sx={{ fontSize: '1.75rem', fontWeight: 600 }}
+                  >
+                    {stat.value.toLocaleString()}
+                  </Typography>
+                </Paper>
+              </Grid>
+            ))}
+          </Grid>
+
+          <Card sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                Launcher Versions
+              </Typography>
+
+              <Box sx={{ maxHeight: 200, overflowY: 'auto', mb: 2 }}>
+                {versions.length > 0 ? (
+                  versions.map((item, idx) => (
+                    <Box
+                      key={idx}
+                      sx={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center',
+                        py: 1,
+                        px: 0,
+                        borderBottom:
+                          idx < versions.length - 1
+                            ? '1px solid #2c2c2e'
+                            : 'none',
+                      }}
+                    >
+                      <Typography sx={{ fontSize: '0.875rem' }}>
+                        {item.version}
+                      </Typography>
+                      <Typography
+                        sx={{ fontSize: '0.875rem', color: '#98989f' }}
+                      >
+                        {item.count}
+                      </Typography>
+                    </Box>
+                  ))
+                ) : (
+                  <Typography variant="body2">No data</Typography>
+                )}
+              </Box>
+
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                <Box
+                  sx={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    backgroundColor: '#00ff00',
+                    flexShrink: 0,
+                  }}
+                />
+                <Typography
+                  variant="body2"
+                  sx={{ fontSize: '0.813rem', color: '#98989f' }}
+                >
+                  Realtime Sync Enabled
+                </Typography>
+              </Box>
+            </CardContent>
+          </Card>
+
+          <Box sx={{ width: '100%', height: 120 }}>
+            <canvas ref={canvasRef} style={{ width: '100%', height: '100%' }} />
+          </Box>
+        </Container>
+      </Box>
+    </ThemeProvider>
+  );
+}
+
+export default HollowDashboard;
