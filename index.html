@@ -115,8 +115,13 @@
 
         if (snap.exists()) {
           snap.forEach(child => {
-            const ts = child.val();
-            if (typeof ts !== 'number') return;
+  const data = child.val();
+
+  if (!data || typeof data !== 'object') return;
+
+  const ts = data.lastSeen;
+
+  if (typeof ts !== 'number') return;
             alltime++;
             if (ts >= yearStart)  year++;
             if (ts >= monthStart) month++;
